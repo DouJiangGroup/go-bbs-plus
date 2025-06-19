@@ -52,7 +52,6 @@ func Sign(sk fr.Element, pkBytes []byte, header []byte, messages [][]byte) ([]by
 		return nil, err
 	}
 
-	// ... rest of your implementation is correct
 	// 4. B = P1 + Q_1 * domain + H_1 * msg_1 + ... + H_L * msg_L
 	var B bls12381.G1Jac
 	P1 := GetP1()

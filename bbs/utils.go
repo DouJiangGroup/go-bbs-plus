@@ -65,6 +65,32 @@ func OctetsToPointG2(bytes []byte) (bls12381.G2Affine, error) {
 	return point, err
 }
 
+// OctetsToPublicKey decodes an octet string representing a public key,
+// validates it and returns the corresponding point in G2.
+// Implements Section 4.7.6 of the BBS specification.
+func OctetsToPublicKey(pk []byte) (bls12381.G2Affine, error) {
+	// 1. W = octets_to_point_g2(PK)
+	W, err := OctetsToPointG2(pk)
+
+	// 2. If W is INVALID, return INVALID
+	if err != nil {
+		return bls12381.G2Affine{}, errors.New("INVALID: cannot decode G2 point")
+	}
+
+	// 3. if subgroup_check(W) is INVALID, return INVALID
+	if !W.IsInSubGroup() {
+		return bls12381.G2Affine{}, errors.New("INVALID: point not in correct subgroup")
+	}
+
+	// 4. If W == Identity_G2, return INVALID
+	if W.IsInfinity() {
+		return bls12381.G2Affine{}, errors.New("INVALID: public key is identity element")
+	}
+
+	// 5. return W
+	return W, nil
+}
+
 // ================================================================
 // Serialization utility
 
@@ -105,12 +131,12 @@ func SignatureToOctets(A bls12381.G1Affine, e fr.Element) ([]byte, error) {
 }
 
 // OctetsToSignature decodes an octet string to a signature (A, e) as per BBS spec 4.7.3
-// Returns (A, e, error)
 func OctetsToSignature(signatureOctets []byte) (bls12381.G1Affine, fr.Element, error) {
-	expectedLen := OctetPointLength + OctetScalarLength
+	expectedLen := OctetPointLength + OctetScalarLength // 48 + 32 = 80 bytes
 	if len(signatureOctets) != expectedLen {
 		return bls12381.G1Affine{}, fr.Element{}, errors.New("INVALID: signature octet length")
 	}
+
 	A_octets := signatureOctets[:OctetPointLength]
 	A, err := OctetsToPointG1(A_octets)
 	if err != nil {
@@ -119,6 +145,7 @@ func OctetsToSignature(signatureOctets []byte) (bls12381.G1Affine, fr.Element, e
 	if A.IsInfinity() {
 		return bls12381.G1Affine{}, fr.Element{}, errors.New("INVALID: G1 point is identity")
 	}
+
 	index := OctetPointLength
 	endIndex := index + OctetScalarLength
 	eBytes := signatureOctets[index:endIndex]
@@ -127,6 +154,7 @@ func OctetsToSignature(signatureOctets []byte) (bls12381.G1Affine, fr.Element, e
 	if e.IsZero() {
 		return bls12381.G1Affine{}, fr.Element{}, errors.New("INVALID: scalar e is zero")
 	}
+
 	return A, e, nil
 }
 
