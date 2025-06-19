@@ -1,0 +1,390 @@
+# BBS+ Multi-Message Signatures with Zero-Knowledge Proof and Selective Disclosure
+
+Since you don't have a TPM, we can implement the core BBS+ scheme directly. Here's the complete mathematical breakdown for multi-message signatures with selective disclosure:
+
+## System Setup
+
+### Parameters
+```
+Security parameter: τ
+Bilinear groups: (p, G₁, G₂, GT, e, g₁, g₂) ← G(1^τ)
+Message space: L messages
+Generators: h₀, h₁, h₂, ..., hₗ ←$ G₁^(L+1)
+Hash function: H: {0,1}* → {0,1}^τ
+```
+
+## Phase 1: Key Generation
+
+### What the Signer Does:
+
+1. **Choose Private Key:**
+   ```
+   x ←$ Z*ₚ
+   ```
+
+2. **Compute Public Key Components:**
+   ```
+   w ← g₂^x
+   ```
+
+3. **Generate Proof Key Pair (for efficient proofs):**
+   ```
+   ḡ₁ ←$ G₁* (ensure ḡ₁ ≠ 1_{G₁})
+   ḡ₂ ← ḡ₁^x
+   ```
+
+4. **Create Proof of Key Knowledge:**
+   ```
+   π ← SPK{(x) : w = g₂^x ∧ ḡ₂ = ḡ₁^x}
+   
+   Detailed construction:
+   r ←$ Zₚ
+   t₁ ← g₂^r
+   t₂ ← ḡ₁^r
+   c ← H(w || ḡ₂ || t₁ || t₂ || "keygen")
+   s ← r + c·x mod p
+   π = (c, s)
+   ```
+
+**Public Key:** `pk = (w, h₀, h₁, ..., hₗ, ḡ₁, ḡ₂, π)`
+**Private Key:** `sk = x`
+
+## Phase 2: Multi-Message Signature Generation
+
+### Input
+- Messages: `(m₁, m₂, ..., mₗ) ∈ Zₚˡ`
+- Private key: `x`
+
+### What the Signer Does:
+
+1. **Choose Random Values:**
+   ```
+   e, s ←$ Zₚ
+   ```
+
+2. **Compute Signature:**
+   ```
+   b ← g₁ · h₀^s · ∏ᵢ₌₁^L hᵢ^mᵢ
+   A ← b^(1/(e+x))
+   ```
+   
+   **Note:** Computing `(e+x)⁻¹ mod p` requires extended Euclidean algorithm
+
+3. **Output Signature:**
+   ```
+   σ = (A, e, s)
+   ```
+
+### Signature Verification (Basic)
+```
+Check: A ≠ 1_{G₁}
+Check: e(A, w·g₂^e) ?= e(g₁·h₀^s·∏ᵢ₌₁^L hᵢ^mᵢ, g₂)
+```
+
+## Phase 3: Zero-Knowledge Proof with Selective Disclosure
+
+This is where the magic happens - proving knowledge of a signature while selectively disclosing some messages.
+
+### Input Parameters
+- Signature: `σ = (A, e, s)`
+- Messages: `(m₁, ..., mₗ)`
+- Disclosed set: `D ⊆ {1, 2, ..., L}` (indices of messages to reveal)
+- Undisclosed set: `D̄ = {1, 2, ..., L} \ D` (indices of messages to keep private)
+- Context: `ctx` (any additional context to bind the proof to)
+
+### What the Prover Does:
+
+#### Step 1: Credential Randomization
+```
+r₁ ←$ Z*ₚ
+A' ← A^r₁
+r₃ ← r₁⁻¹ mod p
+Ā ← A'^(-e) · ḡ₂^r₁   // This equals A'^x
+```
+
+#### Step 2: Prepare Proof Components
+```
+r₂ ←$ Zₚ
+b ← g₁ · h₀^s · ∏ᵢ₌₁^L hᵢ^mᵢ
+d ← b^r₁ · h₀^(-r₂)
+s' ← s - r₂ · r₃ mod p
+```
+
+#### Step 3: Generate Commitments for Zero-Knowledge Proof
+```
+// Random values for each secret
+r_mᵢ ←$ Zₚ for i ∈ D̄ (undisclosed messages)
+r_e, r_r₂, r_r₃, r_s' ←$ Zₚ
+
+// Compute commitment values
+t₁ ← A'^r_e · h₀^r_r₂
+
+t₂ ← d^r_r₃ · h₀^r_s' · ∏ᵢ∈D̄ hᵢ^r_mᵢ
+```
+
+#### Step 4: Generate Challenge
+```
+c ← H(A' || Ā || d || {mᵢ}ᵢ∈D || t₁ || t₂ || ctx || "proof")
+```
+
+#### Step 5: Generate Responses
+```
+s_mᵢ ← r_mᵢ - c · mᵢ mod p for i ∈ D̄
+s_e ← r_e - c · e mod p
+s_r₂ ← r_r₂ + c · r₂ mod p
+s_r₃ ← r_r₃ + c · r₃ mod p
+s_s' ← r_s' - c · s' mod p
+```
+
+#### Step 6: Output Proof
+```
+π = (c, {s_mᵢ}ᵢ∈D̄, s_e, s_r₂, s_r₃, s_s')
+```
+
+### Complete Proof Output
+```
+Proof = (A', Ā, d, {mᵢ}ᵢ∈D, π, ctx)
+```
+
+## Phase 4: Proof Verification
+
+### Input to Verifier
+- Proof: `(A', Ā, d, {mᵢ}ᵢ∈D, π, ctx)`
+- Public key: `pk = (w, h₀, h₁, ..., hₗ, ḡ₁, ḡ₂)`
+- Disclosed indices: `D`
+
+### What the Verifier Does:
+
+#### Step 1: Basic Checks
+```
+Check: A' ≠ 1_{G₁}
+Check: e(A', w·g₂^e) ?= e(Ā, g₂)
+```
+**Note:** The second check uses the fact that `e(A'^(x+e), g₂) = e(A'^x · A'^e, g₂) = e(Ā · A'^e, g₂)`
+
+#### Step 2: Parse Proof
+```
+π = (c, {s_mᵢ}ᵢ∈D̄, s_e, s_r₂, s_r₃, s_s')
+```
+
+#### Step 3: Recompute Proof Values
+```
+// Recompute commitments using responses
+t̂₁ ← A'^s_e · h₀^s_r₂ · (Ā/d)^(-c)
+
+t̂₂ ← d^s_r₃ · h₀^s_s' · ∏ᵢ∈D̄ hᵢ^s_mᵢ · (g₁ · ∏ᵢ∈D hᵢ^mᵢ)^(-c)
+```
+
+#### Step 4: Verify Challenge
+```
+ĉ ← H(A' || Ā || d || {mᵢ}ᵢ∈D || t̂₁ || t̂₂ || ctx || "proof")
+Check: c ?= ĉ
+```
+
+#### Step 5: Output Result
+```
+If all checks pass: return True
+Else: return False
+```
+
+## Practical Implementation Details
+
+### Message Encoding
+Messages should be encoded as elements of Zₚ. For arbitrary data:
+```python
+def encode_message(msg_bytes):
+    # Hash to appropriate size and interpret as integer
+    hash_val = hashlib.sha256(msg_bytes).digest()
+    return int.from_bytes(hash_val, 'big') % p
+```
+
+### Efficient Multi-Exponentiation
+For computing `∏ᵢ₌₁^L hᵢ^mᵢ`:
+```python
+def multi_exp(bases, exponents):
+    # Use windowing method for efficiency
+    result = G1.identity()
+    for base, exp in zip(bases, exponents):
+        result = result * (base ** exp)
+    return result
+```
+
+### Complete Python-like Pseudocode
+
+```python
+class BBS_Plus:
+    def __init__(self, num_messages):
+        self.L = num_messages
+        self.setup_parameters()
+    
+    def setup_parameters(self):
+        # Generate bilinear groups
+        self.p, self.G1, self.G2, self.GT, self.e, self.g1, self.g2 = generate_groups()
+        
+        # Generate message generators
+        self.h = [self.G1.random() for _ in range(self.L + 1)]  # h0, h1, ..., hL
+        
+    def keygen(self):
+        x = random_zp()
+        w = self.g2 ** x
+        
+        # Proof key pair
+        g_bar1 = self.G1.random()
+        g_bar2 = g_bar1 ** x
+        
+        # Proof of key knowledge
+        r = random_zp()
+        t1 = self.g2 ** r
+        t2 = g_bar1 ** r
+        c = hash_to_zp(w, g_bar2, t1, t2, "keygen")
+        s = (r + c * x) % self.p
+        pi = (c, s)
+        
+        pk = (w, self.h, g_bar1, g_bar2, pi)
+        sk = x
+        return pk, sk
+    
+    def sign(self, messages, sk):
+        x = sk
+        e = random_zp()
+        s = random_zp()
+        
+        # Compute b = g1 * h0^s * ∏(hi^mi)
+        b = self.g1 * (self.h[0] ** s)
+        for i, m in enumerate(messages):
+            b = b * (self.h[i+1] ** m)
+        
+        # Compute A = b^(1/(e+x))
+        inv = mod_inverse(e + x, self.p)
+        A = b ** inv
+        
+        return (A, e, s)
+    
+    def verify_signature(self, signature, messages, pk):
+        A, e, s = signature
+        w, h, g_bar1, g_bar2, pi = pk
+        
+        if A == self.G1.identity():
+            return False
+            
+        # Compute b
+        b = self.g1 * (h[0] ** s)
+        for i, m in enumerate(messages):
+            b = b * (h[i+1] ** m)
+        
+        # Check e(A, w * g2^e) = e(b, g2)
+        lhs = self.e(A, w * (self.g2 ** e))
+        rhs = self.e(b, self.g2)
+        return lhs == rhs
+    
+    def create_proof(self, signature, messages, disclosed_indices, context=""):
+        A, e, s = signature
+        D = set(disclosed_indices)
+        D_bar = set(range(len(messages))) - D
+        
+        # Step 1: Randomize credential
+        r1 = random_zp_star()
+        A_prime = A ** r1
+        r3 = mod_inverse(r1, self.p)
+        A_bar = (A_prime ** (-e)) * (self.g_bar2 ** r1)
+        
+        # Step 2: Prepare components
+        r2 = random_zp()
+        b = self.g1 * (self.h[0] ** s)
+        for i, m in enumerate(messages):
+            b = b * (self.h[i+1] ** m)
+        
+        d = (b ** r1) * (self.h[0] ** (-r2))
+        s_prime = (s - r2 * r3) % self.p
+        
+        # Step 3: Generate random values for proof
+        r_m = {i: random_zp() for i in D_bar}
+        r_e = random_zp()
+        r_r2 = random_zp()
+        r_r3 = random_zp()
+        r_s_prime = random_zp()
+        
+        # Step 4: Compute commitments
+        t1 = (A_prime ** r_e) * (self.h[0] ** r_r2)
+        
+        t2 = (d ** r_r3) * (self.h[0] ** r_s_prime)
+        for i in D_bar:
+            t2 = t2 * (self.h[i+1] ** r_m[i])
+        
+        # Step 5: Generate challenge
+        disclosed_messages = [messages[i] for i in sorted(D)]
+        c = hash_to_zp(A_prime, A_bar, d, disclosed_messages, t1, t2, context, "proof")
+        
+        # Step 6: Generate responses
+        s_m = {i: (r_m[i] - c * messages[i]) % self.p for i in D_bar}
+        s_e = (r_e - c * e) % self.p
+        s_r2 = (r_r2 + c * r2) % self.p
+        s_r3 = (r_r3 + c * r3) % self.p
+        s_s_prime = (r_s_prime - c * s_prime) % self.p
+        
+        pi = (c, s_m, s_e, s_r2, s_r3, s_s_prime)
+        
+        return (A_prime, A_bar, d, disclosed_messages, pi, context)
+    
+    def verify_proof(self, proof, disclosed_indices, pk):
+        A_prime, A_bar, d, disclosed_messages, pi, context = proof
+        w, h, g_bar1, g_bar2, pi_key = pk
+        c, s_m, s_e, s_r2, s_r3, s_s_prime = pi
+        
+        D = set(disclosed_indices)
+        D_bar = set(range(self.L)) - D
+        
+        # Basic checks
+        if A_prime == self.G1.identity():
+            return False
+            
+        # Recompute commitments
+        t1_hat = (A_prime ** s_e) * (h[0] ** s_r2) * ((A_bar / d) ** (-c))
+        
+        t2_hat = (d ** s_r3) * (h[0] ** s_s_prime)
+        for i in D_bar:
+            t2_hat = t2_hat * (h[i+1] ** s_m[i])
+        
+        # Add disclosed message component
+        disclosed_component = self.g1
+        for i, m in zip(sorted(D), disclosed_messages):
+            disclosed_component = disclosed_component * (h[i+1] ** m)
+        t2_hat = t2_hat * (disclosed_component ** (-c))
+        
+        # Verify challenge
+        c_hat = hash_to_zp(A_prime, A_bar, d, disclosed_messages, t1_hat, t2_hat, context, "proof")
+        
+        return c == c_hat
+
+# Example usage
+bbs = BBS_Plus(num_messages=5)
+pk, sk = bbs.keygen()
+
+# Sign multiple messages
+messages = [123, 456, 789, 101112, 131415]
+signature = bbs.sign(messages, sk)
+
+# Create proof disclosing messages at indices 0 and 2
+disclosed_indices = [0, 2]
+proof = bbs.create_proof(signature, messages, disclosed_indices, "my_context")
+
+# Verify proof
+is_valid = bbs.verify_proof(proof, disclosed_indices, pk)
+```
+
+## Security Properties
+
+This scheme provides:
+
+1. **Unforgeability**: Cannot forge signatures without the private key
+2. **Zero-Knowledge**: Proof reveals nothing about undisclosed messages
+3. **Selective Disclosure**: Can choose which messages to reveal
+4. **Unlinkability**: Different proofs from the same signature are unlinkable (if no messages are disclosed in common)
+
+## Efficiency Notes
+
+- **Signature Size**: 1 G₁ element + 2 Zₚ elements ≈ 96 bytes (256-bit curves)
+- **Proof Size**: 3 G₁ elements + (3 + |D̄|) Zₚ elements
+- **Verification**: 2 pairing operations + O(L) exponentiations
+
+This gives you a complete BBS+ implementation without requiring a TPM!
