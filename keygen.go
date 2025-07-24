@@ -8,26 +8,7 @@ import (
 
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
-	"golang.org/x/crypto/sha3"
 )
-
-// expandMessageXOF implements expand_message_xof as defined in
-// RFC 9380, Section 5.3.3 for SHAKE-256
-func expandMessageXOF(msg []byte, dst []byte, lenInBytes int) []byte {
-	shake := sha3.NewShake256()
-
-	// Construct DST_prime = DST || I2OSP(len(DST), 1)
-	dstPrime := append(dst, byte(len(dst)))
-
-	// Input: msg || I2OSP(len_in_bytes, 2) || DST_prime
-	shake.Write(msg)
-	shake.Write(I2OSP(lenInBytes, 2))
-	shake.Write(dstPrime)
-
-	output := make([]byte, lenInBytes)
-	shake.Read(output)
-	return output
-}
 
 // GenerateRandomKeyMaterial generates cryptographically secure random key material
 // This is a utility function to help generate proper key_material
@@ -68,39 +49,37 @@ func GenerateRandomKeyMaterial(length int) ([]byte, error) {
 func KeyGen(keyMaterial []byte, keyInfo []byte, keyDst []byte) (fr.Element, error) {
 	var sk fr.Element
 
-	// 1. if length(key_material) < 32, return INVALID
+	// Step 1: if length(key_material) < 32, return INVALID
 	if len(keyMaterial) < 32 {
 		return sk, errors.New("INVALID: key_material must be at least 32 bytes")
 	}
 
-	// 2. if length(key_info) > 65535, return INVALID
+	// Step 2: if length(key_info) > 65535, return INVALID
 	if len(keyInfo) > 65535 {
 		return sk, errors.New("INVALID: key_info must be at most 65535 bytes")
 	}
 
-	// Handle optional parameters with correct s
 	if keyInfo == nil {
-		keyInfo = []byte{} //  to empty string
+		keyInfo = []byte{}
 	}
 	if keyDst == nil {
-		keyDst = []byte(KeygenDST) //  DST
+		keyDst = []byte(CIPHERSUITE_ID + H2G_HM2S_ID + KEYGEN_DST_ID)
 	}
 
-	// 3. derive_input = key_material || I2OSP(length(key_info), 2) || key_info
+	// Step 3: derive_input = key_material || I2OSP(length(key_info), 2) || key_info
 	keyInfoLen := I2OSP(len(keyInfo), 2)
 	deriveInput := make([]byte, 0, len(keyMaterial)+2+len(keyInfo))
 	deriveInput = append(deriveInput, keyMaterial...)
 	deriveInput = append(deriveInput, keyInfoLen...)
 	deriveInput = append(deriveInput, keyInfo...)
 
-	// 4. SK = hash_to_scalar(derive_input, key_dst)
+	// Step 4: SK = hash_to_scalar(derive_input, key_dst)
 	sk, err := hashToScalar(deriveInput, keyDst)
 	if err != nil {
-		// 5. if SK is INVALID, return INVALID
 		return sk, fmt.Errorf("INVALID: hash_to_scalar failed: %w", err)
 	}
 
-	// 6. return SK
+	// Step 5: return SK
 	return sk, nil
 }
 
@@ -116,9 +95,18 @@ func KeyGen(keyMaterial []byte, keyInfo []byte, keyDst []byte) (fr.Element, erro
 // 1. W = SK * BP2
 // 2. return point_to_octets_g2(W)
 func SkToPk(sk fr.Element) ([]byte, error) {
+	if sk.IsZero() {
+		return nil, errors.New("INVALID: secret key cannot be zero")
+	}
+
 	var pk bls12381.G2Affine
 	var skBigInt big.Int
 	sk.BigInt(&skBigInt)
 	pk.ScalarMultiplication(&g2Aff, &skBigInt)
+
+	if pk.IsInfinity() {
+		return nil, errors.New("INVALID: public key cannot be identity")
+	}
+
 	return PointToOctetsG2(pk), nil
 }

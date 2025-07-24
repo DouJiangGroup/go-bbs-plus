@@ -2,19 +2,22 @@ package bbs
 
 const (
 	// BLS12-381-SHAKE-256 ciphersuite parameters (Section 6.2.1)
-	CiphersuiteID     = "BBS_BLS12381G1_XOF:SHAKE-256_SSWU_RO_H2G_HM2S_"
-	OctetScalarLength = 32
-	OctetPointLength  = 48
-	ExpandLen         = 48
-
-	// Keygen
-	KeygenDST = CiphersuiteID + "KEYGEN_DST_"
+	CIPHERSUITE_ID      = "BBS_BLS12381G1_XOF:SHAKE-256_SSWU_RO_"
+	OCTET_SCALAR_LENGTH = 32
+	OCTET_POINT_LENGTH  = 48
+	EXPAND_LEN          = 48
 
 	// Generator
 	P1Hex = "8929dfbc7e6642c4ed9cba0856e493f8b9d7d5fcb0c31ef8fdcd34d50648a56c795e106e9eada6e0bda386b414150755"
 
-	P1GeneratorSeed = CiphersuiteID + "BP_MESSAGE_GENERATOR_SEED"
-	GeneratorSeed   = CiphersuiteID + "MESSAGE_GENERATOR_SEED"
-	SeedDST         = CiphersuiteID + "SIG_GENERATOR_SEED_" // 19 bytes
-	GeneratorDST    = CiphersuiteID + "SIG_GENERATOR_DST_"  // 18 bytes
+	// Domain separation suffixes
+	H2G_HM2S_ID   = "H2G_HM2S_"
+	H2S_ID        = "H2S_"
+	KEYGEN_DST_ID = "KEYGEN_DST_"
+
+	SIG_GENERATOR_SEED_ID        = "SIG_GENERATOR_SEED_"
+	SIG_GENERATOR_DST_ID         = "SIG_GENERATOR_DST_"
+	BP_MESSAGE_GENERATOR_SEED_ID = "BP_MESSAGE_GENERATOR_SEED"
+	MESSAGE_GENERATOR_SEED_ID    = "MESSAGE_GENERATOR_SEED"
+	MAP_MSG_TO_SCALAR_AS_HASH_ID = "MAP_MSG_TO_SCALAR_AS_HASH_"
 )

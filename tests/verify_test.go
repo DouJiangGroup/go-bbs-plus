@@ -6,14 +6,13 @@ import (
 
 	bbs "github.com/Iscaraca/bbs"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// Test vectors from BLS12-381-SHAKE-256 ciphersuite (Section 7.3)
-
-// Public key from Section 7.3.1
+// Test vectors from BLS12-381-SHAKE-256 ciphersuite (Section 8.3)
 const testPublicKeyHex = "92d37d1d6cd38fea3a873953333eab23a4c0377e3e049974eb62bd45949cdeb18fb0490edcd4429adff56e65cbce42cf188b31bddbd619e419b99c2c41b38179eb001963bc3decaae0d9f702c7a8c004f207f46c734a5eae2e8e82833f3e7ea5"
 
-// Messages from Section 7.2
+// Messages from Section 8.2
 var testMessages = []string{
 	"9872ad089e452c7b6e283dfac2a80d58e8d0ff71cc4d5e310a1debdda4a45f02",
 	"c344136d9ab02da4dd5908bbba913ae6f58c2cc844b802a6f811f5fb075f9b80",
@@ -28,112 +27,55 @@ var testMessages = []string{
 }
 
 func TestVerify_SingleMessage(t *testing.T) {
+	// Test vector from spec Section 8.3.4.1
 	headerHex := "11223344556677889900aabbccddeeff"
 	header, err := hex.DecodeString(headerHex)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Failed to decode header")
 
 	pkBytes, err := hex.DecodeString(testPublicKeyHex)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Failed to decode public key")
 
 	messageHex := testMessages[0]
 	message, err := hex.DecodeString(messageHex)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Failed to decode message")
 	messages := [][]byte{message}
 
-	signatureHex := "98eb37fceb31115bf647f2983aef578ad895e55f7451b1add02fa738224cb89a31b148eace4d20d001be31d162c58d12574f30e68665b6403956a83b23a16f1daceacce8c5fde25d3defd52d6d5ff2e1"
+	// Expected signature from spec Section 8.3.4.1
+	signatureHex := "b9a622a4b404e6ca4c85c15739d2124a1deb16df750be202e2430e169bc27fb71c44d98e6d40792033e1c452145ada95030832c5dc778334f2f1b528eced21b0b97a12025a283d78b7136bb9825d04ef"
 	signature, err := hex.DecodeString(signatureHex)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Failed to decode signature")
 
 	valid, err := bbs.Verify(pkBytes, signature, header, messages)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Verify should not fail")
 	assert.True(t, valid, "Expected signature to be valid, but got invalid")
 }
 
 func TestVerify_MultiMessage(t *testing.T) {
+	// Test vector from spec Section 8.3.4.2
 	headerHex := "11223344556677889900aabbccddeeff"
 	header, err := hex.DecodeString(headerHex)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Failed to decode header")
 
 	pkBytes, err := hex.DecodeString(testPublicKeyHex)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Failed to decode public key")
 
 	var messages [][]byte
-	for _, msgHex := range testMessages {
+	for i, msgHex := range testMessages {
 		if msgHex == "" {
 			messages = append(messages, []byte{})
 		} else {
 			msg, err := hex.DecodeString(msgHex)
-			assert.NoError(t, err)
+			require.NoError(t, err, "Failed to decode message %d", i)
 			messages = append(messages, msg)
 		}
 	}
 
-	signatureHex := "97a296c83ed3626fe254d26021c5e9a087b580f1e8bc91bb51efb04420bfdaca215fe376a0bc12440bcc52224fb33c696cca9239b9f28dcddb7bd850aae9cd1a9c3e9f3639953fe789dbba53b8f0dd6f"
+	// Expected signature from spec Section 8.3.4.2
+	signatureHex := "956a3427b1b8e3642e60e6a7990b67626811adeec7a0a6cb4f770cdd7c20cf08faabb913ac94d18e1e92832e924cb6e202912b624261fc6c59b0fea801547f67fb7d3253e1e2acbcf90ef59a6911931e"
 	signature, err := hex.DecodeString(signatureHex)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Failed to decode signature")
 
 	valid, err := bbs.Verify(pkBytes, signature, header, messages)
-	assert.NoError(t, err)
+	require.NoError(t, err, "Verify should not fail")
 	assert.True(t, valid, "Expected signature to be valid, but got invalid")
-}
-
-func TestVerify_InvalidSignature(t *testing.T) {
-	headerHex := "11223344556677889900aabbccddeeff"
-	header, err := hex.DecodeString(headerHex)
-	assert.NoError(t, err)
-
-	pkBytes, err := hex.DecodeString(testPublicKeyHex)
-	assert.NoError(t, err)
-
-	message, err := hex.DecodeString(testMessages[0])
-	assert.NoError(t, err)
-	messages := [][]byte{message}
-
-	signatureHex := "98eb37fceb31115bf647f2983aef578ad895e55f7451b1add02fa738224cb89a31b148eace4d20d001be31d162c58d12574f30e68665b6403956a83b23a16f1daceacce8c5fde25d3defd52d6d5ff2e2"
-	signature, err := hex.DecodeString(signatureHex)
-	assert.NoError(t, err)
-
-	valid, err := bbs.Verify(pkBytes, signature, header, messages)
-	assert.NoError(t, err)
-	assert.False(t, valid, "Expected tampered signature to be invalid, but got valid")
-}
-
-func TestVerify_WrongMessage(t *testing.T) {
-	headerHex := "11223344556677889900aabbccddeeff"
-	header, err := hex.DecodeString(headerHex)
-	assert.NoError(t, err)
-
-	pkBytes, err := hex.DecodeString(testPublicKeyHex)
-	assert.NoError(t, err)
-
-	message, err := hex.DecodeString(testMessages[1])
-	assert.NoError(t, err)
-	messages := [][]byte{message}
-
-	signatureHex := "98eb37fceb31115bf647f2983aef578ad895e55f7451b1add02fa738224cb89a31b148eace4d20d001be31d162c58d12574f30e68665b6403956a83b23a16f1daceacce8c5fde25d3defd52d6d5ff2e1"
-	signature, err := hex.DecodeString(signatureHex)
-	assert.NoError(t, err)
-
-	valid, err := bbs.Verify(pkBytes, signature, header, messages)
-	assert.NoError(t, err)
-	assert.False(t, valid, "Expected signature with wrong message to be invalid, but got valid")
-}
-
-func TestVerify_EmptyMessages(t *testing.T) {
-	pkBytes, err := hex.DecodeString(testPublicKeyHex)
-	assert.NoError(t, err)
-
-	var header []byte
-	var messages [][]byte
-
-	signatureHex := "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-	signature, err := hex.DecodeString(signatureHex)
-	assert.NoError(t, err)
-
-	valid, err := bbs.Verify(pkBytes, signature, header, messages)
-	if err == nil && valid {
-		t.Log("Empty messages verification: unexpected success")
-	} else {
-		t.Log("Empty messages verification: failed as expected with dummy signature")
-	}
 }

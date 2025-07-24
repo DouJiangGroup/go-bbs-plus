@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	bbs "github.com/Iscaraca/bbs"
-	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,21 +17,19 @@ func TestP1FixedPoint(t *testing.T) {
 
 	// Generate P1
 	p1, err := bbs.CreateP1()
-	require.NoError(t, err)
+	require.NoError(t, err, "CreateP1 should not fail")
 
 	actual := bbs.PointToOctetsG1(p1)
 	assert.Equal(t, expected, actual, "Generated P1 fixed point does not match expected value")
 
 	// Get cached P1
 	p1Cached := bbs.GetP1()
-	require.NoError(t, err)
-
 	actual = bbs.PointToOctetsG1(p1Cached)
 	assert.Equal(t, expected, actual, "Cached P1 fixed point does not match expected value")
 }
 
 func TestMessageGenerators(t *testing.T) {
-	// Expected generators from section 7.3.3 (BLS12-381-SHAKE-256 suite)
+	// Expected generators from spec Section 8.3.3 (BLS12-381-SHAKE-256 suite)
 	expectedGenerators := []string{
 		// Q_1 (domain generator)
 		"a9d40131066399fd41af51d883f4473b0dcd7d028d3d34ef17f3241d204e28507d7ecae032afa1d5490849b7678ec1f8",
@@ -49,17 +46,18 @@ func TestMessageGenerators(t *testing.T) {
 		"965a6c62451d4be6cb175dec39727dc665762673ee42bf0ac13a37a74784fbd61e84e0915277a6f59863b2bb4f5f6005",
 	}
 
-	// Generate all 11 generators at once
-	generators, err := bbs.CreateGenerators(11, bls12381.G2Affine{})
-	require.NoError(t, err)
-	require.Len(t, generators, 11)
+	// Use proper api_id for BLS12-381-SHAKE-256 ciphersuite
+	apiID := []byte(bbs.CIPHERSUITE_ID + bbs.H2G_HM2S_ID)
+	generators, err := bbs.CreateGenerators(11, apiID)
+	require.NoError(t, err, "CreateGenerators should not fail")
+	require.Len(t, generators, 11, "Should generate exactly 11 generators")
 
-	// Verify each generator matches the expected value
+	// Verify each generator matches the expected value from spec
 	for i, expectedHex := range expectedGenerators {
 		expected, err := hex.DecodeString(expectedHex)
-		require.NoError(t, err)
+		require.NoError(t, err, "Failed to decode expected generator hex for index %d", i)
 
 		actual := bbs.PointToOctetsG1(generators[i])
-		assert.Equal(t, expected, actual, "Generator %d does not match expected value", i)
+		assert.Equal(t, expected, actual, "Generator %d does not match expected value from specification", i)
 	}
 }

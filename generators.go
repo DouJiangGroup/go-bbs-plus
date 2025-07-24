@@ -2,6 +2,7 @@ package bbs
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
@@ -14,12 +15,22 @@ var (
 )
 
 func CreateP1() (bls12381.G1Affine, error) {
-	v := expandMessageXOF([]byte(P1GeneratorSeed), []byte(SeedDST), ExpandLen)
-	v = expandMessageXOF(append(v, I2OSP(1, 8)...), []byte(SeedDST), ExpandLen)
+	ciphersuiteID := []byte(CIPHERSUITE_ID)
 
-	p1, err := hashToG1SHAKE256(v, []byte(GeneratorDST))
+	seedDST := append(ciphersuiteID, []byte(H2G_HM2S_ID+SIG_GENERATOR_SEED_ID)...)
+	generatorDST := append(ciphersuiteID, []byte(H2G_HM2S_ID+SIG_GENERATOR_DST_ID)...)
+	generatorSeed := append(ciphersuiteID, []byte(H2G_HM2S_ID+BP_MESSAGE_GENERATOR_SEED_ID)...)
+
+	v := expandMessageXOF(generatorSeed, seedDST, EXPAND_LEN)
+	v = expandMessageXOF(append(v, I2OSP(1, 8)...), seedDST, EXPAND_LEN)
+
+	p1, err := hashToG1SHAKE256(v, generatorDST)
 	if err != nil {
 		return bls12381.G1Affine{}, fmt.Errorf("INVALID: hash_to_curve failed: %w", err)
+	}
+
+	if p1.IsInfinity() {
+		return bls12381.G1Affine{}, errors.New("INVALID: P1 cannot be infinity")
 	}
 
 	return p1, nil
@@ -33,19 +44,33 @@ func GetP1() bls12381.G1Affine {
 	return p1
 }
 
-func CreateGenerators(count uint64, pk bls12381.G2Affine) ([]bls12381.G1Affine, error) {
-	return hashToGenerators(count)
-}
+func CreateGenerators(count uint64, apiID []byte) ([]bls12381.G1Affine, error) {
+	if apiID == nil {
+		apiID = []byte{}
+	}
 
-func hashToGenerators(count uint64) ([]bls12381.G1Affine, error) {
-	v := expandMessageXOF([]byte(GeneratorSeed), []byte(SeedDST), ExpandLen)
+	if count == 0 {
+		return []bls12381.G1Affine{}, nil
+	}
+
+	seedDST := append(apiID, []byte(SIG_GENERATOR_SEED_ID)...)
+	generatorDST := append(apiID, []byte(SIG_GENERATOR_DST_ID)...)
+	generatorSeed := append(apiID, []byte(MESSAGE_GENERATOR_SEED_ID)...)
+
+	v := expandMessageXOF(generatorSeed, seedDST, EXPAND_LEN)
 	generators := make([]bls12381.G1Affine, 0, count)
+
 	for i := uint64(1); i <= count; i++ {
-		v = expandMessageXOF(append(v, I2OSP(int(i), 8)...), []byte(SeedDST), ExpandLen)
-		generatorI, err := hashToG1SHAKE256(v, []byte(GeneratorDST))
+		v = expandMessageXOF(append(v, I2OSP(int(i), 8)...), seedDST, EXPAND_LEN)
+		generatorI, err := hashToG1SHAKE256(v, generatorDST)
 		if err != nil {
-			return generators, fmt.Errorf("INVALID: hash_to_scalar failed: %w", err)
+			return generators, fmt.Errorf("INVALID: hash_to_curve failed at index %d: %w", i-1, err)
 		}
+
+		if generatorI.IsInfinity() {
+			return generators, fmt.Errorf("INVALID: generator %d is infinity", i-1)
+		}
+
 		generators = append(generators, generatorI)
 	}
 	return generators, nil
@@ -80,37 +105,43 @@ func hashToFieldSHAKE256(msg, dst []byte, count int) ([]fp.Element, error) {
 // HashToG1SHAKE256 hashes a message to a point on the G1 curve using the SSWU map
 // with SHAKE-256 expand_message_xof (implementing BLS12381G1_XOF:SHAKE-256_SSWU_RO_).
 func hashToG1SHAKE256(msg, dst []byte) (bls12381.G1Affine, error) {
-	// Step 1: Hash to field using SHAKE-256 (get 2 field elements)
+	if len(dst) == 0 {
+		return bls12381.G1Affine{}, errors.New("INVALID: empty domain separation tag")
+	}
+
 	u, err := hashToFieldSHAKE256(msg, dst, 2*1)
 	if err != nil {
 		return bls12381.G1Affine{}, err
 	}
 
-	// Step 2: Map each field element to curve using SSWU
 	Q0 := bls12381.MapToCurve1(&u[0])
 	Q1 := bls12381.MapToCurve1(&u[1])
 
-	// Step 3: Apply isogeny map to get points on target curve E (not E')
 	hash_to_curve.G1Isogeny(&Q0.X, &Q0.Y)
 	hash_to_curve.G1Isogeny(&Q1.X, &Q1.Y)
 
-	// Step 4: Add the two points together (in Jacobian coordinates for efficiency)
 	var _Q0, _Q1 bls12381.G1Jac
 	_Q0.FromAffine(&Q0)
 	_Q1.FromAffine(&Q1).AddAssign(&_Q0)
-
-	// Step 5: Clear cofactor to ensure we're in the prime-order subgroup
 	_Q1.ClearCofactor(&_Q1)
 
-	// Step 6: Convert back to affine coordinates
 	var result bls12381.G1Affine
 	result.FromJacobian(&_Q1)
+
+	if result.IsInfinity() {
+		return result, errors.New("INVALID: hash_to_curve resulted in infinity")
+	}
+
 	return result, nil
 }
 
 // HashToG2SHAKE256 hashes a message to a point on the G2 curve using the SSWU map
 // with SHAKE-256 expand_message_xof (implementing BLS12381G2_XOF:SHAKE-256_SSWU_RO_).
 func hashToG2SHAKE256(msg, dst []byte) (bls12381.G2Affine, error) {
+	if len(dst) == 0 {
+		return bls12381.G2Affine{}, errors.New("INVALID: empty domain separation tag")
+	}
+
 	// Step 1: Hash to field using SHAKE-256 (get 2 field elements, each with 2 components for Fp2)
 	// G2 points have coordinates in Fp2, so we need 2*2=4 field elements total
 	u, err := hashToFieldSHAKE256(msg, dst, 2*2)
@@ -145,6 +176,10 @@ func hashToG2SHAKE256(msg, dst []byte) (bls12381.G2Affine, error) {
 	// Step 7: Convert back to affine coordinates
 	var result bls12381.G2Affine
 	result.FromJacobian(&_Q1)
+
+	if result.IsInfinity() {
+		return result, errors.New("INVALID: hash_to_curve resulted in infinity")
+	}
 
 	return result, nil
 }
