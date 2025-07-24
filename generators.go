@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	_, _, g1Aff, g2Aff = bls12381.Generators()
+	_, _, _, g2Aff = bls12381.Generators()
 )
 
 func CreateP1() (bls12381.G1Affine, error) {
@@ -126,55 +126,6 @@ func hashToG1SHAKE256(msg, dst []byte) (bls12381.G1Affine, error) {
 	_Q1.ClearCofactor(&_Q1)
 
 	var result bls12381.G1Affine
-	result.FromJacobian(&_Q1)
-
-	if result.IsInfinity() {
-		return result, errors.New("INVALID: hash_to_curve resulted in infinity")
-	}
-
-	return result, nil
-}
-
-// HashToG2SHAKE256 hashes a message to a point on the G2 curve using the SSWU map
-// with SHAKE-256 expand_message_xof (implementing BLS12381G2_XOF:SHAKE-256_SSWU_RO_).
-func hashToG2SHAKE256(msg, dst []byte) (bls12381.G2Affine, error) {
-	if len(dst) == 0 {
-		return bls12381.G2Affine{}, errors.New("INVALID: empty domain separation tag")
-	}
-
-	// Step 1: Hash to field using SHAKE-256 (get 2 field elements, each with 2 components for Fp2)
-	// G2 points have coordinates in Fp2, so we need 2*2=4 field elements total
-	u, err := hashToFieldSHAKE256(msg, dst, 2*2)
-	if err != nil {
-		return bls12381.G2Affine{}, err
-	}
-
-	// Step 2: Construct Fp2 elements from the 4 field elements
-	var u0, u1 bls12381.E2
-	u0.A0 = u[0] // Real part of first Fp2 element
-	u0.A1 = u[1] // Imaginary part of first Fp2 element
-	u1.A0 = u[2] // Real part of second Fp2 element
-	u1.A1 = u[3] // Imaginary part of second Fp2 element
-
-	// Step 3: Map each Fp2 element to curve using SSWU
-	Q0 := bls12381.MapToCurve2(&u0)
-	Q1 := bls12381.MapToCurve2(&u1)
-
-	// Step 4: Apply isogeny map to get points on target curve E2 (not E2')
-	hash_to_curve.G2Isogeny(&Q0.X, &Q0.Y)
-	hash_to_curve.G2Isogeny(&Q1.X, &Q1.Y)
-
-	// Step 5: Add the two points together (in Jacobian coordinates for efficiency)
-	var _Q0, _Q1 bls12381.G2Jac
-	_Q0.FromAffine(&Q0)
-	_Q1.FromAffine(&Q1)
-	_Q1.AddAssign(&_Q0)
-
-	// Step 6: Clear cofactor to ensure we're in the prime-order subgroup
-	_Q1.ClearCofactor(&_Q1)
-
-	// Step 7: Convert back to affine coordinates
-	var result bls12381.G2Affine
 	result.FromJacobian(&_Q1)
 
 	if result.IsInfinity() {
