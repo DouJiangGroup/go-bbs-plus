@@ -1,10 +1,12 @@
 package bbs
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
@@ -170,9 +172,9 @@ func OctetsToSignature(signatureOctets []byte) (bls12381.G1Affine, fr.Element, e
 // ================================================================
 // Scalar representation utilities
 
-// expandMessageXOF implements expand_message_xof as defined in
+// ExpandMessageXOF implements expand_message_xof as defined in
 // RFC 9380, Section 5.3.3 for SHAKE-256
-func expandMessageXOF(msg []byte, dst []byte, lenInBytes int) []byte {
+func ExpandMessageXOF(msg []byte, dst []byte, lenInBytes int) []byte {
 	shake := sha3.NewShake256()
 
 	// Construct DST_prime = DST || I2OSP(len(DST), 1)
@@ -206,7 +208,7 @@ func mapToScalarAsHash(msg []byte, dst []byte) (fr.Element, error) {
 	var scalar fr.Element
 
 	// 1. uniform_bytes = expand_message(msg, dst, expand_len)
-	uniformBytes := expandMessageXOF(msg, dst, EXPAND_LEN)
+	uniformBytes := ExpandMessageXOF(msg, dst, EXPAND_LEN)
 
 	// 2. scalar = OS2IP(uniform_bytes) mod r
 	// SetBytes interprets uniformBytes as big-endian integer and reduces mod r
@@ -221,9 +223,9 @@ func mapToScalarAsHash(msg []byte, dst []byte) (fr.Element, error) {
 	return scalar, nil
 }
 
-// hashToScalar implements hash_to_scalar using map_to_scalar_as_hash
+// HashToScalarlar implements hash_to_scalar using map_to_scalar_as_hash
 // as specified in Section 6.2.1 (map_to_scalar: map_to_scalar_as_hash)
-func hashToScalar(msg []byte, dst []byte) (fr.Element, error) {
+func HashToScalarlar(msg []byte, dst []byte) (fr.Element, error) {
 	if dst == nil {
 		dst = []byte(CIPHERSUITE_ID + "H2S_")
 	}
@@ -247,7 +249,7 @@ func MessagesToScalars(messages [][]byte, apiID []byte) ([]fr.Element, error) {
 
 	for i, msg := range messages {
 		msgCopy := append([]byte{}, msg...)
-		scalar, err := hashToScalar(msgCopy, dst)
+		scalar, err := HashToScalarlar(msgCopy, dst)
 		if err != nil {
 			return nil, fmt.Errorf("INVALID: hash_to_scalar failed for message %d: %w", i, err)
 		}
@@ -304,8 +306,31 @@ func CalculateDomain(pk []byte, Q1 bls12381.G1Affine, HPoints []bls12381.G1Affin
 	domInput = append(domInput, header...)
 
 	// Step 4: hash_to_scalar_dst = api_id || "H2S_"
-	hashToScalarDST := append(apiID, []byte("H2S_")...)
+	HashToScalarlarDST := append(apiID, []byte("H2S_")...)
 
 	// Step 5: return hash_to_scalar(dom_input, hash_to_scalar_dst)
-	return hashToScalar(domInput, hashToScalarDST)
+	return HashToScalarlar(domInput, HashToScalarlarDST)
+}
+
+// ================================================================
+// PRNG utilities
+
+func randomScalar() (fr.Element, error) {
+	var s fr.Element
+
+	b := make([]byte, EXPAND_LEN)
+	_, err := rand.Read(b)
+	if err != nil {
+		return s, fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+
+	bigInt := new(big.Int).SetBytes(b)
+
+	// Reduce modulo the field order r to ensure result is in valid range
+	modulus := fr.Modulus()
+	bigInt.Mod(bigInt, modulus)
+
+	s.SetBigInt(bigInt)
+
+	return s, nil
 }

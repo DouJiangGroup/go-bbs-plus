@@ -86,8 +86,8 @@ func CoreSign(sk fr.Element, pkBytes []byte, generators []bls12381.G1Affine, hea
 	}
 
 	// hash_to_scalar_dst = api_id || "H2S_"
-	hashToScalarDST := append(apiID, []byte("H2S_")...)
-	e, err := hashToScalar(ser, hashToScalarDST)
+	HashToScalarlarDST := append(apiID, []byte("H2S_")...)
+	e, err := HashToScalarlar(ser, HashToScalarlarDST)
 	if err != nil {
 		return nil, err
 	}

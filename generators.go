@@ -21,8 +21,8 @@ func CreateP1() (bls12381.G1Affine, error) {
 	generatorDST := append(ciphersuiteID, []byte(H2G_HM2S_ID+SIG_GENERATOR_DST_ID)...)
 	generatorSeed := append(ciphersuiteID, []byte(H2G_HM2S_ID+BP_MESSAGE_GENERATOR_SEED_ID)...)
 
-	v := expandMessageXOF(generatorSeed, seedDST, EXPAND_LEN)
-	v = expandMessageXOF(append(v, I2OSP(1, 8)...), seedDST, EXPAND_LEN)
+	v := ExpandMessageXOF(generatorSeed, seedDST, EXPAND_LEN)
+	v = ExpandMessageXOF(append(v, I2OSP(1, 8)...), seedDST, EXPAND_LEN)
 
 	p1, err := hashToG1SHAKE256(v, generatorDST)
 	if err != nil {
@@ -57,11 +57,11 @@ func CreateGenerators(count uint64, apiID []byte) ([]bls12381.G1Affine, error) {
 	generatorDST := append(apiID, []byte(SIG_GENERATOR_DST_ID)...)
 	generatorSeed := append(apiID, []byte(MESSAGE_GENERATOR_SEED_ID)...)
 
-	v := expandMessageXOF(generatorSeed, seedDST, EXPAND_LEN)
+	v := ExpandMessageXOF(generatorSeed, seedDST, EXPAND_LEN)
 	generators := make([]bls12381.G1Affine, 0, count)
 
 	for i := uint64(1); i <= count; i++ {
-		v = expandMessageXOF(append(v, I2OSP(int(i), 8)...), seedDST, EXPAND_LEN)
+		v = ExpandMessageXOF(append(v, I2OSP(int(i), 8)...), seedDST, EXPAND_LEN)
 		generatorI, err := hashToG1SHAKE256(v, generatorDST)
 		if err != nil {
 			return generators, fmt.Errorf("INVALID: hash_to_curve failed at index %d: %w", i-1, err)
@@ -89,7 +89,7 @@ func hashToFieldSHAKE256(msg, dst []byte, count int) ([]fp.Element, error) {
 	lenInBytes := count * L
 
 	// Use SHAKE-256 expand_message_xof instead of SHA-256 expand_message_xmd
-	pseudoRandomBytes := expandMessageXOF(msg, dst, lenInBytes)
+	pseudoRandomBytes := ExpandMessageXOF(msg, dst, lenInBytes)
 
 	res := make([]fp.Element, count)
 	for i := 0; i < count; i++ {

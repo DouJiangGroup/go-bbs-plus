@@ -74,7 +74,7 @@ func KeyGen(keyMaterial []byte, keyInfo []byte, keyDst []byte) (fr.Element, erro
 	deriveInput = append(deriveInput, keyInfo...)
 
 	// Step 4: SK = hash_to_scalar(derive_input, key_dst)
-	sk, err := hashToScalar(deriveInput, keyDst)
+	sk, err := HashToScalarlar(deriveInput, keyDst)
 	if err != nil {
 		return sk, fmt.Errorf("INVALID: hash_to_scalar failed: %w", err)
 	}
